@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Amazônia Tropical — Jornada Infinita</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071b16;color:#f5ffe9;font-family:system-ui,Arial,sans-serif}
+#app{height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;gap:6px}
+#hud{width:min(1100px,100%);display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-weight:850;font-size:12px}
+.brand{font-size:clamp(15px,2.5vw,24px);color:#ffe17a;text-shadow:2px 3px #4b2f17}
+.pill{background:#082c24;border:1px solid #74cfa0;border-radius:9px;padding:5px 8px}
+canvas{display:block;width:min(1100px,100%);height:auto;max-height:calc(100dvh - 132px);aspect-ratio:16/9;border:2px solid #e9cc73;border-radius:10px;box-shadow:0 0 34px #24e99b30;background:#1c6148}
+#help{width:min(1100px,100%);font-size:11px;text-align:center;color:#b9dac8}
+#touch{display:none;width:min(1100px,100%);justify-content:space-between;gap:8px;user-select:none}
+.group{display:flex;gap:6px}.btn{height:44px;min-width:46px;padding:0 10px;border:1px solid #9fe5b8;border-radius:12px;background:#104733;color:white;font-weight:900;touch-action:none}.btn:active{background:#277d53}
+#overlay{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:#00120edc;overflow:auto}
+.panel{width:min(720px,100%);max-height:94dvh;overflow:auto;text-align:center;padding:clamp(18px,4vw,30px);border:2px solid #e8ca70;border-radius:20px;background:linear-gradient(145deg,#15563f,#071b18 75%);box-shadow:0 20px 90px #000b}
+.kicker{font-size:12px;letter-spacing:3px;color:#a4f8bd;font-weight:950}
+h1{font-size:clamp(35px,8vw,68px);line-height:.9;letter-spacing:-2px;color:#ffe17a;text-shadow:0 4px #8d4a24;margin:12px 0}
+p{line-height:1.5;color:#e1f4e4}.actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+button{cursor:pointer}.primary{background:linear-gradient(#ffeb9a,#e8b83f);border:0;border-radius:12px;padding:13px 20px;color:#173321;font-size:15px;font-weight:950}
+.secondary{background:#164b3a;color:#eaffea;border:1px solid #80c69a;border-radius:11px;padding:11px 16px;font-weight:850}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:17px 0}.feature{padding:12px;border:1px solid #347e60;background:#082b25;border-radius:12px}.feature b{display:block;color:#ffe17a}.feature span{font-size:12px;color:#c9e8d6}
+@media(max-width:650px){#touch{display:flex}canvas{max-height:calc(100dvh - 185px)}.features{grid-template-columns:1fr}.feature{padding:8px}}
+</style></head>
+<body>
+<div id="app">
+ <div id="hud">
+  <div class="brand">🌿 AMAZÔNIA TROPICAL</div>
+  <div class="pill">JORNADA <span id="distance">0</span> m</div>
+  <div class="pill">🍌 <span id="fruit">0</span></div>
+  <div class="pill">💎 <span id="gems">0</span></div>
+  <div class="pill">❤️ <span id="lives">5</span></div>
+  <div class="pill">BIOMA: <span id="biome">FLORESTA</span></div>
+ </div>
+ <canvas id="game" width="960" height="540"></canvas>
+ <div id="help">Mover: A/D ou ←/→ · Pular: Espaço/W/↑ · Atacar: X · Poder: E · Pausar: P · Reiniciar: R</div>
+ <div id="touch"><div class="group"><button class="btn" data-key="ArrowLeft">◀</button><button class="btn" data-key="ArrowRight">▶</button></div><div class="group"><button class="btn" data-action="power">✦ PODER</button><button class="btn" data-key="x">⚔</button><button class="btn" data-key=" ">PULAR ⤒</button></div></div>
+</div>
+<div id="overlay"><div class="panel" id="panel"></div></div>
+<script>
+(function(){
+"use strict";
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+const W=960,H=540,$=id=>document.getElementById(id),overlay=$("overlay"),panel=$("panel");
+const biomes=[
+ {name:"Floresta das Samaúmas",short:"FLORESTA",sky:"#69d3dd",far:"#398467",ground:"#174b32",leaf:"#9fe66e",water:false},
+ {name:"Rios de Cristal",short:"RIOS",sky:"#79d7ee",far:"#3487a0",ground:"#15564c",leaf:"#a3f5dd",water:true},
+ {name:"Montanhas do Uirapuru",short:"MONTANHAS",sky:"#9bd8f5",far:"#7d9db0",ground:"#4a5e54",leaf:"#eaf7ee",mountain:true},
+ {name:"Mangue dos Cipós",short:"MANGUE",sky:"#a4d17d",far:"#54784b",ground:"#27472e",leaf:"#d9f07a"},
+ {name:"Cavernas de Cristal",short:"CAVERNAS",sky:"#5d58a4",far:"#37366f",ground:"#25294b",leaf:"#a8f6ff"},
+ {name:"Pântano das Luzes",short:"PÂNTANO",sky:"#64b9a0",far:"#326a5c",ground:"#183c35",leaf:"#c4ff86"},
+ {name:"Ruínas de Aruã",short:"RUÍNAS",sky:"#e4bd86",far:"#a28b5e",ground:"#59482f",leaf:"#ffe18a"},
+ {name:"Vulcão Verde",short:"VULCÃO",sky:"#e88b65",far:"#874e3a",ground:"#392a2b",leaf:"#ffbd5d"},
+ {name:"Tempestade Amazônica",short:"TEMPESTADE",sky:"#4d638f",far:"#2e4562",ground:"#1b303e",leaf:"#b7e8ff"},
+ {name:"Coração da Selva",short:"CORAÇÃO",sky:"#5ec9a0",far:"#286848",ground:"#103b2a",leaf:"#ffe47a"}
+];
+const bossNames=["Sapo-Rei Musgoso","Piranha Colossal","Gavião-Trovão","Jacaré de Cipó","Morcego Prisma","Rainha dos Mosquitos","Guardião de Pedra","Escorpião Magmático","Serpente da Tempestade","Onça Sombria"];
+const powers=[["FOLHA","#75f2a0"],["FOGO","#ff794a"],["GELO","#8deeff"],["RAIO","#ffe46c"],["ESPÍRITO","#d5a0ff"]];
+let keys={},frame=0,paused=false,started=false,gameOver=false,overlayMode=true;
+let fruit=0,gems=0,lives=5,power=0,distance=0,camera=0,worldX=0,nextBossAt=1900,boss=null,bossCount=0,shots=[],particles=[],platforms=[],items=[],enemies=[];
+let player={x:80,y:300,w:29,h:42,vx:0,vy:0,on:false,face:1,inv:0};
+function setText(){ $("fruit").textContent=fruit;$("gems").textContent=gems;$("lives").textContent=lives;$("distance").textContent=Math.floor(distance/10);$("biome").textContent=biomes[Math.floor(bossCount%10)].short;}
+function menu(){overlayMode=true;overlay.style.display="flex";panel.innerHTML='<div class="kicker">UMA AVENTURA INFINITA</div><h1>AMAZÔNIA<br>TROPICAL</h1><p><b>Uma única jornada contínua, sem telas de fases.</b> Corra pela floresta amazônica, atravesse rios e cachoeiras, escale montanhas, explore cavernas e ruínas. A paisagem muda naturalmente enquanto você avança, e um chefe colossal aparece periodicamente para bloquear seu caminho.</p><div class="features"><div class="feature"><b>🌳 Biomas vivos</b><span>Florestas, rios, montanhas, mangues, cavernas e regiões mágicas.</span></div><div class="feature"><b>⚔️ Chefes recorrentes</b><span>Enfrente guardiões únicos por região, com barra de vida.</span></div><div class="feature"><b>✨ Cinco poderes</b><span>Folha, fogo, gelo, raio e espírito, além de cristais e bananas.</span></div></div><p>Controles: setas/A-D para mover, Espaço para pular, X para atacar, E para mudar poder. No celular, use os botões na tela.</p><div class="actions"><button class="primary" id="startBtn">COMEÇAR A JORNADA</button><button class="secondary" id="resetBtn">REINICIAR TUDO</button></div><p style="font-size:11px;color:#a9cbb8">Jogo HTML offline. Se abrir uma tela verde, feche e reabra o arquivo index.html no Chrome atualizado.</p>';
+$("startBtn").onclick=()=>{overlay.style.display="none";overlayMode=false;started=true;paused=false;};
+$("resetBtn").onclick=()=>{fruit=0;gems=0;lives=5;power=0;distance=0;camera=0;worldX=0;bossCount=0;nextBossAt=1900;boss=null;shots=[];particles=[];player={x:80,y:300,w:29,h:42,vx:0,vy:0,on:false,face:1,inv:0};makeWorld();overlay.style.display="none";overlayMode=false;started=true;paused=false;};
+}
+function makeWorld(){platforms=[];items=[];enemies=[];let start=Math.floor(worldX/500)*500;for(let i=0;i<18;i++){let x=start+i*160;let y=420-((i*47+Math.floor(worldX/80)*13)%3)*40;platforms.push({x,y,w:115+(i%3)*20,h:18,moving:i%5===0,base:y,phase:i*.8});if(i%2===0)items.push({x:x+45,y:y-45,type:i%6===0?"gem":"fruit",taken:false});if(i%3===1)enemies.push({x:x+80,y:y-28,min:x+20,max:x+125,v:i%2?1.2:-1.2,alive:true});}platforms.push({x:start-100,y:470,w:280,h:90},{x:start+2800,y:450,w:360,h:90});}
+function resetWorldAhead(){let far=worldX+3200;platforms=platforms.filter(p=>p.x>worldX-250);items=items.filter(a=>!a.taken&&a.x>worldX-250);enemies=enemies.filter(e=>e.alive&&e.x>worldX-250);let maxX=platforms.reduce((m,p)=>Math.max(m,p.x+p.w),worldX);for(let i=0;i<24&&maxX<far;i++){let x=maxX+70+(i%3)*35,y=390-((i*37+bossCount*11)%4)*38;platforms.push({x,y,w:100+(i%3)*18,h:18,moving:i%6===0,base:y,phase:frame*.03+i});if(i%2===0)items.push({x:x+42,y:y-48,type:i%7===0?"gem":"fruit",taken:false});if(i%3===0)enemies.push({x:x+75,y:y-27,min:x+10,max:x+120,v:i%2?1.3:-1.3,alive:true});maxX=x+150;}}
+function keydown(e){let k=e.key;if([" ","ArrowLeft","ArrowRight","ArrowUp"].includes(k))e.preventDefault();keys[k]=true;if(k.toLowerCase()==="e")power=(power+1)%powers.length;if(k.toLowerCase()==="p"&&started&&!overlayMode)paused=!paused;if(k.toLowerCase()==="r"&&started){fruit=0;gems=0;lives=5;distance=0;worldX=0;camera=0;bossCount=0;nextBossAt=1900;boss=null;player={x:80,y:300,w:29,h:42,vx:0,vy:0,on:false,face:1,inv:0};makeWorld();}if((k.toLowerCase()==="x"||k.toLowerCase()==="z")&&started)fire();}
+function keyup(e){keys[e.key]=false;}addEventListener("keydown",keydown);addEventListener("keyup",keyup);
+document.querySelectorAll("[data-key]").forEach(b=>{let k=b.dataset.key;b.addEventListener("pointerdown",e=>{e.preventDefault();keys[k]=true;if(k==="x")fire();});["pointerup","pointercancel","pointerleave"].forEach(ev=>b.addEventListener(ev,()=>keys[k]=false));});
+document.querySelector("[data-action=power]").addEventListener("pointerdown",e=>{e.preventDefault();power=(power+1)%powers.length;});
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
+function ellipse(x,y,rx,ry,c){ctx.fillStyle=c;ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fill();}
+function label(s,x,y,size,color){ctx.font="900 "+size+"px system-ui";ctx.fillStyle=color;ctx.fillText(s,x,y);}
+function background(){let idx=Math.floor(distance/1200)%biomes.length,b=biomes[idx];$("biome").textContent=b.short;let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,b.sky);g.addColorStop(1,b.far);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ellipse(790,85,37,37,"#fff1b1aa");
+for(let i=0;i<8;i++){let x=((i*165-camera*.16)%1250+1250)%1250-120;let h=120+(i*37%130);if(b.mountain||idx===2){ctx.fillStyle=b.far;ctx.beginPath();ctx.moveTo(x-20,430);ctx.lineTo(x+65,390-h);ctx.lineTo(x+155,430);ctx.fill();ctx.fillStyle="#edf9f2";ctx.beginPath();ctx.moveTo(x+35,390-h+50);ctx.lineTo(x+65,390-h);ctx.lineTo(x+95,390-h+50);ctx.fill();}else{rect(x+35,230,20,240,b.ground);ellipse(x+45,225-h*.1,65,70,b.far);ellipse(x+5,250-h*.1,42,50,b.ground);ellipse(x+80,252-h*.1,45,50,b.leaf);}}
+if(b.water){rect(0,440,W,100,"#167fa6");for(let i=0;i<19;i++){let x=(i*63-frame*2)%1000;rect(x,460+Math.sin(frame*.07+i)*8,35,3,"#8ff6f2");}rect(685,155,70,285,"#7ceafa");rect(700,155,12,285,"#d5ffff");}
+if(idx===4){for(let i=0;i<9;i++){let x=(i*123-camera*.3)%W;ctx.save();ctx.translate(x,400);ctx.rotate(Math.sin(frame*.02+i)*.1);ctx.fillStyle=i%2?"#91ffff":"#bd9cff";ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(18,-80-(i%3)*20);ctx.lineTo(34,0);ctx.fill();ctx.restore();}}
+for(let i=0;i<24;i++){let x=((i*79-camera*.45)%W+W)%W,y=(i*47+frame*(i%2?-.15:.13))%470;rect(x,y,2,2,i%3?"#efffb1":"#adffe1");}
+}
+function drawPlatforms(){for(let p of platforms){let y=p.moving?p.base+Math.sin(frame*.035+p.phase)*24:p.y;p.cy=y;let x=p.x-camera;if(x+p.w<-10||x>W+10)continue;rect(x+3,y+7,p.w,p.h,"#061c1799");rect(x,y,p.w,p.h,biomes[Math.floor(distance/1200)%10].ground);rect(x,y,p.w,7,biomes[Math.floor(distance/1200)%10].leaf);for(let xx=x+12;xx<x+p.w;xx+=28)rect(xx,y+10,3,6,"#ffffff28");}}
+function drawHero(){let x=player.x-camera,y=player.y;if(player.inv>0&&frame%8<4)return;ellipse(x+14,y+43,16,4,"#06150d99");rect(x+7,y+12,16,20,"#9a5c32");rect(x+4,y+4,22,17,"#c8874c");ellipse(x+14,y+5,13,10,"#b77742");rect(x+7,y+29,7,12,"#64412a");rect(x+19,y+29,7,12,"#64412a");rect(x+8,y+7,5,6,"#fff");rect(x+19,y+7,5,6,"#fff");rect(x+(player.face>0?10:20),y+9,3,4,"#10231a");rect(x+5,y+15,21,5,"#27d78b");rect(x+10,y+16,10,3,"#ffe17a");rect(x+7,y+1,16,4,"#6b4228");if(power){rect(x+3,y+2,23,5,powers[power][1]);}}
+function drawBoss(){if(!boss)return;let x=boss.x-camera,y=boss.y;if(x<-120||x>W+120)return;let b=biomes[boss.kind%10],col=["#56ad50","#267fa5","#a65b3c","#56814a","#7762c9","#69b86d","#b4a071","#c75b36","#467cba","#28372c"][boss.kind%10];let glow=ctx.createRadialGradient(x+40,y+40,4,x+40,y+40,100);glow.addColorStop(0,b.leaf+"88");glow.addColorStop(1,"#00000000");ctx.fillStyle=glow;ctx.fillRect(x-60,y-60,200,200);ellipse(x+40,y+45,44,32,col);ellipse(x+12,y+24,15,16,col);ellipse(x+68,y+24,15,16,col);ellipse(x+24,y+29,7,8,"#fff");ellipse(x+56,y+29,7,8,"#fff");ellipse(x+24,y+30,3,4,"#111");ellipse(x+56,y+30,3,4,"#111");rect(x+12,y+68,12,12,col);rect(x+57,y+68,12,12,col);label(boss.name,x-10,y-17,14,"#fff");rect(670,17,250,15,"#391c27");rect(672,19,246*(boss.hp/boss.max),11,"#ff5b4d");label("CHEFE",620,29,11,"#ffeaa0");}
+function fire(){if(!started||attackCD>0)return;attackCD=18;shots.push({x:player.x+14+player.face*16,y:player.y+20,vx:player.face*8,life:100,hero:true});for(let i=0;i<5;i++)particles.push({x:player.x+14,y:player.y+20,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4,life:18,col:powers[power][1]});}
+let attackCD=0;
+function update(){if(!started||paused||overlayMode||gameOver)return;frame++;let left=keys.ArrowLeft||keys.a||keys.A,right=keys.ArrowRight||keys.d||keys.D,jump=keys[" "]||keys.ArrowUp||keys.w||keys.W;
+if(left){player.vx-=.7;player.face=-1;}if(right){player.vx+=.7;player.face=1;}player.vx*=.82;player.vx=Math.max(-5,Math.min(5,player.vx));if(jump&&player.on){player.vy=power===1?-13:-11.5;player.on=false;[" ","ArrowUp","w","W"].forEach(k=>keys[k]=false);}
+player.vy=Math.min(14,player.vy+.55);let oldBottom=player.y+player.h;player.x+=player.vx;player.y+=player.vy;player.on=false;
+for(let p of platforms){let py=p.moving?p.base+Math.sin(frame*.035+p.phase)*24:p.y;if(player.vy>=0&&player.x+player.w>p.x&&player.x<p.x+p.w&&oldBottom<=py+player.vy+4&&player.y+player.h>=py){player.y=py-player.h;player.vy=0;player.on=true;}}
+if(player.x<worldX-40)player.x=worldX-40;
+if(player.y>610){lives--;player.x=worldX+70;player.y=300;player.vy=0;player.inv=100;if(lives<=0){gameOver=true;overlayCard("A FLORESTA ESPERA","Você percorreu "+Math.floor(distance/10)+" metros. Continue sua aventura quando estiver pronto.","TENTAR NOVAMENTE",()=>{lives=5;gameOver=false;overlay.style.display="none";overlayMode=false;player.y=300;player.inv=100;});}}
+if(player.inv>0)player.inv--;if(attackCD>0)attackCD--;
+items.forEach(a=>{if(!a.taken&&player.x+player.w>a.x&&player.x<a.x+18&&player.y+player.h>a.y-12&&player.y<a.y+15){a.taken=true;if(a.type==="gem")gems++;else fruit++;}});
+enemies.forEach(e=>{if(!e.alive)return;e.x+=e.v;if(e.x<e.min||e.x>e.max)e.v*=-1;if(player.inv<=0&&player.x+player.w>e.x&&player.x<e.x+28&&player.y+player.h>e.y&&player.y<e.y+28){if(player.vy>1&&oldBottom<e.y+10){e.alive=false;player.vy=-7;fruit+=2;}else{lives--;player.inv=90;player.vy=-6;if(lives<=0){gameOver=true;overlayCard("FIM DE JOGO","A aventura foi longa, mas a floresta ainda pode ser salva.","CONTINUAR",()=>{lives=5;gameOver=false;overlay.style.display="none";overlayMode=false;});}}}});
+worldX=Math.max(worldX,player.x-90);distance=Math.max(distance,worldX);camera=Math.max(0,player.x-W*.32);
+if(worldX+2100>platforms.reduce((m,p)=>Math.max(m,p.x+p.w),0))resetWorldAhead();
+if(!boss&&worldX>nextBossAt){bossCount++;let kind=Math.floor((bossCount-1)%10);boss={x:worldX+700,y:340,w:84,h:82,hp:4+Math.floor(bossCount/3),max:4+Math.floor(bossCount/3),kind,attack:0,name:bossNames[kind]};nextBossAt=worldX+2200;}
+if(boss){boss.attack++;boss.x=Math.max(worldX+430,Math.min(worldX+700,boss.x+Math.sin(frame*.025)*1.5));boss.y=340+Math.sin(frame*.06)*20;if(boss.attack%90===0)shots.push({x:boss.x,y:boss.y+42,vx:-4,life:150,hero:false});shots.forEach(s=>{s.x+=s.vx;s.life--;if(!s.hero&&player.inv<=0&&player.x+player.w>s.x-7&&player.x<s.x+8&&player.y+player.h>s.y-8&&player.y<s.y+8){s.life=0;lives--;player.inv=90;player.vy=-6;if(lives<=0){gameOver=true;overlayCard("DERROTADO","O guardião venceu este duelo. A jornada pode continuar.","VOLTAR AO JOGO",()=>{lives=5;gameOver=false;overlay.style.display="none";overlayMode=false;});}}if(s.hero&&s.x>boss.x&&s.x<boss.x+boss.w&&s.y>boss.y&&s.y<boss.y+boss.h){s.life=0;boss.hp--;for(let i=0;i<8;i++)particles.push({x:s.x,y:s.y,vx:(Math.random()-.5)*6,vy:(Math.random()-.5)*6,life:22,col:powers[power][1]});if(boss.hp<=0){fruit+=10;gems+=3;boss=null;nextBossAt=worldX+1700;}}});shots=shots.filter(s=>s.life>0&&s.x>camera-120&&s.x<camera+W+180);}
+particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.08;p.life--;});particles=particles.filter(p=>p.life>0);setText();}
+function overlayCard(title,body,button,fn){overlayMode=true;overlay.style.display="flex";panel.innerHTML='<div class="kicker">AMAZÔNIA TROPICAL</div><h1 style="font-size:42px">'+title+'</h1><p>'+body+'</p><div class="actions"><button class="primary" id="cardBtn">'+button+'</button></div>';$("cardBtn").onclick=fn;}
+function render(){background();drawPlatforms();items.forEach(a=>{if(a.taken)return;let x=a.x-camera,y=a.y+Math.sin(frame*.08+a.x)*4;if(x<-30||x>W+30)return;if(a.type==="gem"){ctx.save();ctx.translate(x,y);ctx.rotate(frame*.03);ctx.fillStyle="#bafaff";ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(8,0);ctx.lineTo(0,10);ctx.lineTo(-8,0);ctx.closePath();ctx.fill();ctx.restore();}else{label("🍌",x,y,20,"#ffe17a");}});
+enemies.forEach(e=>{if(!e.alive)return;let x=e.x-camera;ellipse(x+13,e.y+13,14,12,"#9a553b");ellipse(x+8,e.y+8,4,5,"#fff");ellipse(x+19,e.y+8,4,5,"#fff");ellipse(x+8,e.y+9,2,3,"#111");ellipse(x+19,e.y+9,2,3,"#111");});
+drawBoss();shots.forEach(s=>{ellipse(s.x-camera,s.y,s.hero?8:9,5,s.hero?powers[power][1]:"#ffb65d");});drawHero();
+for(let x=0;x<W;x+=38){ellipse(x+8,531,19,15,biomes[Math.floor(distance/1200)%10].ground);rect(x+8,514,3,15,biomes[Math.floor(distance/1200)%10].leaf);}
+particles.forEach(p=>{ctx.globalAlpha=Math.min(1,p.life/15);rect(p.x-camera,p.y,4,4,p.col);ctx.globalAlpha=1;});
+if(paused){rect(0,0,W,H,"#00150fbb");label("PAUSADO",390,260,35,"#ffe27b");label("Pressione P para continuar",335,292,16,"#fff");}
+}
+function loop(){try{update();render();}catch(err){console.error(err);if(!window.__errorShown){window.__errorShown=true;overlayCard("ERRO NO JOGO","O navegador encontrou um erro inesperado. Recarregue a página para tentar novamente.","RECARREGAR",()=>location.reload());}}requestAnimationFrame(loop);}
+makeWorld();menu();setText();loop();
+})();
+</script></body></html>
